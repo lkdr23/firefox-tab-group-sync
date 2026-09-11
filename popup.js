@@ -12,12 +12,28 @@ document.addEventListener('DOMContentLoaded', () => {
   const deviceSyncStatus = document.getElementById('device-sync-status');
   const sourceLink = document.getElementById('source-link');
   const kofiLink = document.getElementById('kofi-link');
+  const rateLink = document.getElementById('rate-link');
   const versionLabel = document.getElementById('version-label');
   const mirrorCheckbox = document.getElementById('mirror-checkbox');
   const syncRow = document.querySelector('.sync-row');
   const themeButtons = Array.from(document.querySelectorAll('.theme-btn'));
   const bulkActions = document.getElementById('bulk-actions');
   const masterCheckbox = document.getElementById('master-checkbox');
+  const pullSyncBtn = document.getElementById('pull-sync-btn');
+  const syncHelpCard = document.getElementById('sync-help-card');
+  const dismissSyncHelpBtn = document.getElementById('dismiss-sync-help');
+  const advancedSyncBtn = document.getElementById('advanced-sync-btn');
+  const advancedModal = document.getElementById('advanced-modal');
+  const advancedCloseBtn = document.getElementById('advanced-close-btn');
+  const quotaFill = document.getElementById('quota-fill');
+  const quotaText = document.getElementById('quota-text');
+  const quotaPercent = document.getElementById('quota-percent');
+  const quotaItems = document.getElementById('quota-items');
+  const diagLastPush = document.getElementById('diag-last-push');
+  const diagLastError = document.getElementById('diag-last-error');
+  const exportJsonBtn = document.getElementById('export-json-btn');
+  const importJsonBtn = document.getElementById('import-json-btn');
+  const importFileInput = document.getElementById('import-file-input');
 
   // Open GitHub repo in a new tab when the footer link is clicked
   if (sourceLink) {
@@ -35,6 +51,17 @@ document.addEventListener('DOMContentLoaded', () => {
     kofiLink.addEventListener('click', (e) => {
       e.preventDefault();
       const url = kofiLink.getAttribute('href');
+      if (url) {
+        browser.tabs.create({ url });
+      }
+    });
+  }
+
+  // Open Firefox Add-ons store page in a new tab when the rate link is clicked
+  if (rateLink) {
+    rateLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      const url = rateLink.getAttribute('href');
       if (url) {
         browser.tabs.create({ url });
       }
@@ -189,46 +216,84 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (forceSyncBtn) {
     forceSyncBtn.addEventListener('click', async () => {
-      const originalText = forceSyncBtn.textContent;
       forceSyncBtn.disabled = true;
-      forceSyncBtn.textContent = "Syncing...";
-    setStatusMsg("Pushing current groups to sync...");
+      forceSyncBtn.classList.add('in-progress');
+      setStatusMsg("Pushing current groups to sync...");
       if (deviceSyncStatus) {
         deviceSyncStatus.textContent = "Syncing...";
       }
 
       try {
         const response = await browser.runtime.sendMessage({ type: "forceSync" });
-      if (response && response.status === "success") {
-        const countText = typeof response.count === 'number'
-          ? `${response.count} group(s) synced.`
-          : "Groups synced.";
-        setStatusMsg(countText);
-        if (deviceSyncStatus) {
-          deviceSyncStatus.textContent = countText;
+        if (response && response.status === "success") {
+          const countText = typeof response.count === 'number'
+            ? `${response.count} group(s) synced.`
+            : "Groups synced.";
+          setStatusMsg(countText);
+          if (deviceSyncStatus) {
+            deviceSyncStatus.textContent = countText;
+            setTimeout(() => {
+              if (deviceSyncStatus.textContent === countText) {
+                deviceSyncStatus.textContent = "";
+              }
+            }, 4000);
+          }
+          forceSyncBtn.classList.remove('in-progress');
+          forceSyncBtn.classList.add('completed');
           setTimeout(() => {
-            if (deviceSyncStatus.textContent === countText) {
-              deviceSyncStatus.textContent = "";
-            }
-          }, 4000);
-        }
-      } else {
+            forceSyncBtn.classList.remove('completed');
+            forceSyncBtn.disabled = false;
+          }, 1200);
+        } else {
           const message = response && response.message ? response.message : "Sync failed.";
-        setStatusMsg(`Error: ${message}`);
+          setStatusMsg(`Error: ${message}`);
           if (deviceSyncStatus) {
             deviceSyncStatus.textContent = "Sync failed.";
           }
+          forceSyncBtn.classList.remove('in-progress');
+          forceSyncBtn.disabled = false;
         }
       } catch (error) {
-      setStatusMsg(`Error: ${error.message}`);
+        setStatusMsg(`Error: ${error.message}`);
         if (deviceSyncStatus) {
           deviceSyncStatus.textContent = "Sync failed.";
         }
-      } finally {
-        forceSyncBtn.textContent = originalText;
+        forceSyncBtn.classList.remove('in-progress');
         forceSyncBtn.disabled = false;
-      setTimeout(() => { setStatusMsg(""); }, 2000);
+      } finally {
+        setTimeout(() => { setStatusMsg(""); }, 2000);
       }
+    });
+  }
+
+  if (pullSyncBtn) {
+    pullSyncBtn.addEventListener('click', async () => {
+      pullSyncBtn.disabled = true;
+      pullSyncBtn.classList.add('in-progress');
+      setStatusMsg("Pulling latest sync data...");
+      try {
+        await initializeSyncUI();
+        pullSyncBtn.classList.remove('in-progress');
+        pullSyncBtn.classList.add('completed');
+        setStatusMsg("Refreshed!");
+        setTimeout(() => {
+          pullSyncBtn.classList.remove('completed');
+          pullSyncBtn.disabled = false;
+          setStatusMsg("");
+        }, 1200);
+      } catch (err) {
+        pullSyncBtn.classList.remove('in-progress');
+        pullSyncBtn.disabled = false;
+        setStatusMsg(`Pull failed: ${err.message}`);
+        setTimeout(() => { setStatusMsg(""); }, 2000);
+      }
+    });
+  }
+
+  if (dismissSyncHelpBtn) {
+    dismissSyncHelpBtn.addEventListener('click', async () => {
+      if (syncHelpCard) syncHelpCard.style.display = 'none';
+      await browser.storage.local.set({ dismiss_sync_help: true });
     });
   }
 
@@ -276,6 +341,19 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error("Failed to decompress snapshot for", key, e);
           }
         }
+      }
+
+      const localSettings = await browser.storage.local.get(["dismiss_sync_help", "last_sync_error"]);
+      if (syncHelpCard) {
+        if (remoteKeys.length === 0 && !localSettings.dismiss_sync_help) {
+          syncHelpCard.style.display = 'block';
+        } else {
+          syncHelpCard.style.display = 'none';
+        }
+      }
+      if (localSettings.last_sync_error && deviceSyncStatus && !deviceSyncStatus.textContent) {
+        deviceSyncStatus.textContent = "Sync error (see Advanced)";
+        deviceSyncStatus.title = localSettings.last_sync_error;
       }
 
       listContainer.textContent = '';
@@ -518,6 +596,161 @@ document.addEventListener('DOMContentLoaded', () => {
       syncBtn.disabled = true;
       syncBtn.textContent = "Error";
     }
+  }
+
+  const updateAdvancedDiagnostics = async () => {
+    try {
+      const localData = await browser.storage.local.get([
+        "last_sync_success_time",
+        "last_sync_error",
+        "last_sync_error_time"
+      ]);
+      if (diagLastPush) {
+        diagLastPush.textContent = localData.last_sync_success_time
+          ? new Date(localData.last_sync_success_time).toLocaleTimeString()
+          : "Never";
+      }
+      if (diagLastError) {
+        diagLastError.textContent = localData.last_sync_error
+          ? `${localData.last_sync_error} (${new Date(localData.last_sync_error_time).toLocaleTimeString()})`
+          : "None";
+        diagLastError.style.color = localData.last_sync_error ? "#ef4444" : "inherit";
+      }
+
+      // Quota usage
+      const allSync = await browser.storage.sync.get(null);
+      let totalBytes = 0;
+      let itemCount = 0;
+      for (const [k, v] of Object.entries(allSync)) {
+        const str = JSON.stringify({ [k]: v });
+        totalBytes += (new TextEncoder().encode(str)).length;
+        itemCount++;
+      }
+      const quotaBytes = (browser.storage.sync && browser.storage.sync.QUOTA_BYTES) || 102400;
+      const pct = Math.min(100, Math.round((totalBytes / quotaBytes) * 100));
+
+      if (quotaFill) {
+        quotaFill.style.width = `${pct}%`;
+        quotaFill.classList.toggle('warning', pct >= 75 && pct < 90);
+        quotaFill.classList.toggle('danger', pct >= 90);
+      }
+      if (quotaText) {
+        quotaText.textContent = `${(totalBytes / 1024).toFixed(1)} KB / ${(quotaBytes / 1024).toFixed(0)} KB`;
+      }
+      if (quotaPercent) {
+        quotaPercent.textContent = `${pct}% used`;
+      }
+      if (quotaItems) {
+        quotaItems.textContent = `${itemCount} item(s) in sync storage`;
+      }
+    } catch (e) {
+      console.error("Error loading diagnostics:", e);
+    }
+  };
+
+  if (advancedSyncBtn && advancedModal) {
+    advancedSyncBtn.addEventListener('click', () => {
+      updateAdvancedDiagnostics();
+      advancedModal.classList.add('show');
+    });
+  }
+
+  if (advancedCloseBtn && advancedModal) {
+    advancedCloseBtn.addEventListener('click', () => {
+      advancedModal.classList.remove('show');
+    });
+  }
+
+  if (advancedModal) {
+    advancedModal.addEventListener('click', (e) => {
+      if (e.target === advancedModal) {
+        advancedModal.classList.remove('show');
+      }
+    });
+  }
+
+  if (exportJsonBtn) {
+    exportJsonBtn.addEventListener('click', async () => {
+      try {
+        exportJsonBtn.disabled = true;
+        exportJsonBtn.textContent = "Exporting...";
+        const response = await browser.runtime.sendMessage({ type: "exportLocalState" });
+        if (response && response.status === "success" && response.data) {
+          const blob = new Blob([JSON.stringify(response.data, null, 2)], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          const dateStr = new Date().toISOString().slice(0, 10);
+          a.download = `firefox-tab-groups-${dateStr}.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          exportJsonBtn.textContent = "Exported!";
+        } else {
+          throw new Error(response && response.message ? response.message : "Export failed");
+        }
+      } catch (err) {
+        console.error("Export error:", err);
+        alert(`Export failed: ${err.message}`);
+        exportJsonBtn.textContent = "Export Failed";
+      } finally {
+        setTimeout(() => {
+          exportJsonBtn.textContent = "Export JSON";
+          exportJsonBtn.disabled = false;
+        }, 1500);
+      }
+    });
+  }
+
+  if (importJsonBtn && importFileInput) {
+    importJsonBtn.addEventListener('click', () => {
+      importFileInput.click();
+    });
+
+    importFileInput.addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const raw = JSON.parse(event.target.result);
+          const response = await browser.runtime.sendMessage({
+            type: "importSnapshot",
+            data: raw,
+            options: { saveToSync: true }
+          });
+          if (response && response.status === "success") {
+            const count = response.result ? response.result.groupCount : 0;
+            alert(`Successfully imported and synced ${count} tab group(s)!`);
+            if (advancedModal) advancedModal.classList.remove('show');
+            initializeSyncUI();
+          } else {
+            throw new Error(response && response.message ? response.message : "Import failed");
+          }
+        } catch (err) {
+          console.error("Import error:", err);
+          alert(`Import failed: ${err.message}`);
+        } finally {
+          importFileInput.value = '';
+        }
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  // Reactive listener: automatically re-render when remote devices sync via Firefox Sync
+  if (browser.storage && browser.storage.onChanged) {
+    browser.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === "sync") {
+        console.log("[Popup] Detected sync storage changes, refreshing UI...");
+        initializeSyncUI();
+        if (advancedModal && advancedModal.classList.contains('show')) {
+          updateAdvancedDiagnostics();
+        }
+      }
+    });
   }
 
   initializeSyncUI();

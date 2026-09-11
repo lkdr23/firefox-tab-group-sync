@@ -77,6 +77,8 @@ export async function saveStateToCloud() {
         await browser.storage.sync.remove(keysToRemove);
       }
       console.log(`[Auto-Save] Synced ${payload.length} groups using compatible V1 format.`);
+      await browser.storage.local.set({ last_sync_success_time: Date.now() });
+      await browser.storage.local.remove(["last_sync_error", "last_sync_error_time"]);
       return payload.length;
     }
 
@@ -127,10 +129,18 @@ export async function saveStateToCloud() {
     }
 
     console.log(`[Auto-Save] Synced ${payload.length} groups to cloud. Compressed size: ${compressed.length} chars.`);
+    await browser.storage.local.set({ last_sync_success_time: Date.now() });
+    await browser.storage.local.remove(["last_sync_error", "last_sync_error_time"]);
     return payload.length;
 
   } catch (error) {
     console.error("Save Error:", error);
+    try {
+      await browser.storage.local.set({
+        last_sync_error: error && error.message ? error.message : String(error),
+        last_sync_error_time: Date.now()
+      });
+    } catch (e) {}
     return null;
   }
 }
@@ -298,3 +308,150 @@ export async function restoreFromCloud(snapshotKey, selectedGroups, options = {}
   
   return await syncGroupsFromRemote(groupsToSync, options);
 }
+
+/**
+ * Calculates current storage.sync usage against browser quota limits.
+ * Default browser.storage.sync limits: QUOTA_BYTES = 102400 (100 KB), QUOTA_BYTES_PER_ITEM = 8192 (8 KB).
+ * @returns {Promise<Object>}
+ */
+export async function getStorageUsage() {
+  const allData = await browser.storage.sync.get(null);
+  let totalBytes = 0;
+  let itemCount = 0;
+  const itemSizes = {};
+
+  for (const [key, value] of Object.entries(allData)) {
+    const serialized = JSON.stringify({ [key]: value });
+    const bytes = typeof TextEncoder !== 'undefined'
+      ? new TextEncoder().encode(serialized).length
+      : Buffer.byteLength(serialized, 'utf8');
+    totalBytes += bytes;
+    itemCount++;
+    itemSizes[key] = bytes;
+  }
+
+  const quotaBytes = (browser.storage.sync && browser.storage.sync.QUOTA_BYTES) || 102400;
+  const quotaPerItem = (browser.storage.sync && browser.storage.sync.QUOTA_BYTES_PER_ITEM) || 8192;
+  const maxItems = (browser.storage.sync && browser.storage.sync.MAX_ITEMS) || 512;
+
+  return {
+    totalBytes,
+    quotaBytes,
+    itemCount,
+    maxItems,
+    quotaPerItem,
+    percentUsed: Math.min(100, Math.round((totalBytes / quotaBytes) * 100)),
+    itemSizes
+  };
+}
+
+/**
+ * Exports current local tab groups as an offline snapshot object.
+ * @returns {Promise<Object>}
+ */
+export async function exportLocalState() {
+  const deviceInfo = await getDeviceInfo();
+
+  if (!browser.tabGroups) {
+    throw new Error("The Tab Groups API is not enabled. Please check about:config.");
+  }
+
+  const groups = await browser.tabGroups.query({});
+  const allTabs = await browser.tabs.query({});
+
+  const tabsByGroup = {};
+  for (const tab of allTabs) {
+    if (!tabsByGroup[tab.groupId]) {
+      tabsByGroup[tab.groupId] = [];
+    }
+    tabsByGroup[tab.groupId].push(tab);
+  }
+
+  const payload = [];
+  for (const group of groups) {
+    const tabs = tabsByGroup[group.id] || [];
+    const validTabs = tabs.filter(t => normalizeUrl(t.url));
+
+    if (validTabs.length > 0) {
+      const safeTitle = (group.title || "Untitled Group").substring(0, MAX_TITLE_LENGTH);
+      payload.push({
+        title: safeTitle,
+        color: group.color || "grey",
+        tabs: validTabs.map(t => t.url)
+      });
+    }
+  }
+
+  return {
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    timestamp: Date.now(),
+    deviceName: deviceInfo.device_name || "Exported Session",
+    deviceId: deviceInfo.device_id,
+    groups: payload
+  };
+}
+
+/**
+ * Validates and normalizes imported snapshot data.
+ * @param {Object} data
+ * @returns {Object} Validated snapshot object
+ */
+export function validateSnapshotData(data) {
+  if (!data || typeof data !== 'object') {
+    throw new Error("Invalid snapshot format: data must be a JSON object.");
+  }
+  if (!Array.isArray(data.groups)) {
+    throw new Error("Invalid snapshot format: missing groups array.");
+  }
+  const validGroups = [];
+  for (const g of data.groups) {
+    if (!g || typeof g !== 'object' || typeof g.title !== 'string') continue;
+    const tabs = Array.isArray(g.tabs)
+      ? g.tabs.map(t => normalizeUrl(typeof t === 'string' ? t : t.url)).filter(u => u !== null)
+      : [];
+    if (tabs.length > 0) {
+      const safeColor = VALID_COLORS.includes(g.color) ? g.color : "grey";
+      validGroups.push({
+        title: g.title.substring(0, MAX_TITLE_LENGTH),
+        color: safeColor,
+        tabs
+      });
+    }
+  }
+  if (validGroups.length === 0) {
+    throw new Error("No valid tab groups found in imported snapshot.");
+  }
+  const safeDeviceName = typeof data.deviceName === 'string'
+    ? data.deviceName.substring(0, 32)
+    : "Imported Device";
+
+  return {
+    timestamp: typeof data.timestamp === 'number' ? data.timestamp : Date.now(),
+    deviceName: safeDeviceName,
+    groups: validGroups
+  };
+}
+
+/**
+ * Imports a snapshot either directly into Firefox tab groups or saved into sync storage.
+ * @param {Object} rawData
+ * @param {Object} options { saveToSync: boolean, mirror: boolean }
+ * @returns {Promise<Object>}
+ */
+export async function importSnapshotData(rawData, options = {}) {
+  const validated = validateSnapshotData(rawData);
+  const { saveToSync = false, mirror = false } = options;
+
+  if (saveToSync) {
+    const importKey = `state_import_${crypto.randomUUID()}`;
+    await browser.storage.sync.set({ [importKey]: validated });
+  }
+
+  await syncGroupsFromRemote(validated.groups, { mirror });
+  return {
+    groupCount: validated.groups.length,
+    tabCount: validated.groups.reduce((acc, g) => acc + g.tabs.length, 0)
+  };
+}
+

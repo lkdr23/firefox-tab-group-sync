@@ -14,14 +14,21 @@ The sync logic is additive and safe:
 - Adds missing tabs to existing groups by matching the group title.
 - Does not remove local tabs or groups that are not present in the remote snapshot (prevents accidental data loss).
 
-## Prerequisite: Enable Tab Groups
+## Prerequisites
 
+### 1. Enable Tab Groups in Firefox
 You must enable the experimental Tab Groups feature in Firefox:
-
 1. Type `about:config` in the address bar and press Enter.
 2. Accept the warning.
 3. Search for `extensions.tabGroups.enabled`.
 4. Set it to `true` and restart Firefox.
+
+### 2. Enable "Add-ons" in Firefox Sync
+Firefox's extension sync storage (`browser.storage.sync`) requires the Add-ons sync engine:
+1. Open Firefox Settings and navigate to **Sync** (`about:preferences#sync`).
+2. Ensure you are signed into your Firefox Account on **all** devices.
+3. Under **Sync Settings**, ensure **"Add-ons"** (or "Extensions") is **checked**.
+4. To force an immediate transfer between devices, click your Firefox account avatar in the browser menu and click **"Sync Now"**.
 
 ## Install (Temporary Local Install)
 
@@ -38,6 +45,13 @@ You must enable the experimental Tab Groups feature in Firefox:
 4. Click "Sync Selected Groups".
 
 Tip: Set an optional device name in the popup to make snapshots easier to identify.
+
+## Advanced Sync & Offline Backup
+
+- **Push & Pull**: Use the **Push** button to immediately save local tab groups, or the **Pull** button to refresh the snapshot list from sync storage.
+- **Reactive Updates**: Remote updates received via Firefox Sync are automatically reflected in real time without having to reopen the popup.
+- **Storage Quota & Diagnostics**: Click the gear icon (**Advanced Sync**) to monitor your `browser.storage.sync` quota usage (100 KB limit), inspect the last sync timestamp, or check error status.
+- **Offline Backup & Restore**: In the Advanced Sync modal, click **Export JSON** to download a backup file of your tab groups, or **Import JSON** to instantly transfer tab groups across devices without Firefox Sync server delays.
 
 ## Development
 

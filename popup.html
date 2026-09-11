@@ -41,6 +41,7 @@
     .device-settings { display: flex; gap: 5px; align-items: center; }
     #device-name-input {
       flex-grow: 1;
+      min-width: 0;
       padding: 5px;
       border: 1px solid var(--border);
       border-radius: 3px;
@@ -48,23 +49,222 @@
       color: var(--text);
     }
     #save-device-name {
-      padding: 5px 10px;
+      padding: 5px 8px;
       border-radius: 3px;
       border: 1px solid var(--border);
       cursor: pointer;
       background: var(--panel);
       color: var(--text);
+      white-space: nowrap;
+      flex-shrink: 0;
     }
     #force-sync-btn {
-      padding: 5px 10px;
+      position: relative;
+      overflow: hidden;
+      padding: 5px 8px;
       border-radius: 3px;
       border: 1px solid var(--border);
       cursor: pointer;
       background: var(--accent);
       color: white;
+      white-space: nowrap;
+      flex-shrink: 0;
+      min-width: 44px;
+      text-align: center;
+      transition: background-color 0.2s, border-color 0.2s;
     }
     #force-sync-btn:hover { background: var(--accent-hover); }
     #force-sync-btn:disabled { background: #777; color: #e0e0e0; cursor: default; }
+    #pull-sync-btn {
+      position: relative;
+      overflow: hidden;
+      padding: 5px 8px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      background: var(--panel);
+      color: var(--text);
+      white-space: nowrap;
+      flex-shrink: 0;
+      min-width: 42px;
+      text-align: center;
+      transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+    }
+    #pull-sync-btn:hover { background: var(--bg); border-color: var(--accent); }
+    #pull-sync-btn:disabled { cursor: default; }
+
+    /* Progress bar indicators inside sync buttons */
+    .btn-progress-bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      height: 3px;
+      width: 0%;
+      background: var(--accent);
+      border-radius: 0 0 3px 3px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease, width 0.3s ease;
+    }
+
+    #force-sync-btn .btn-progress-bar {
+      background: #22c55e;
+    }
+
+    .btn-sync.in-progress .btn-progress-bar {
+      opacity: 1;
+      animation: btnProgressLoop 1s infinite linear;
+    }
+
+    @keyframes btnProgressLoop {
+      0% { left: 0%; width: 0%; }
+      50% { left: 20%; width: 60%; }
+      100% { left: 100%; width: 0%; }
+    }
+
+    .btn-sync.completed {
+      border-color: #22c55e !important;
+      color: #22c55e !important;
+    }
+    #force-sync-btn.completed {
+      background: #16a34a !important;
+      color: white !important;
+    }
+    .btn-sync.completed .btn-progress-bar {
+      left: 0;
+      width: 100%;
+      opacity: 1;
+      background: #22c55e;
+    }
+
+
+    .icon-btn {
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+    }
+    .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    .sync-help-card {
+      background: var(--panel);
+      border: 1px solid #f59e0b;
+      border-radius: 6px;
+      padding: 8px 10px;
+      margin-bottom: 10px;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .sync-help-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: bold;
+      color: #d97706;
+      margin-bottom: 4px;
+    }
+    body[data-theme="dark"] .sync-help-header { color: #fbbf24; }
+    .close-help-btn {
+      margin-left: auto;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      color: var(--muted);
+      padding: 0 4px;
+      line-height: 1;
+    }
+    .sync-help-body p { margin: 3px 0; }
+    .sync-help-body code {
+      background: var(--bg);
+      padding: 1px 3px;
+      border-radius: 3px;
+      font-size: 10px;
+    }
+
+    .advanced-section {
+      margin-bottom: 14px;
+      text-align: left;
+    }
+    .section-title {
+      display: block;
+      font-size: 11px;
+      font-weight: bold;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    .section-desc {
+      font-size: 11px;
+      color: var(--muted);
+      margin: 2px 0 6px 0;
+    }
+    .quota-meter {
+      width: 100%;
+      height: 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .quota-fill {
+      height: 100%;
+      background: var(--accent);
+      transition: width 0.3s ease;
+    }
+    .quota-fill.warning { background: #f59e0b; }
+    .quota-fill.danger { background: #ef4444; }
+    .quota-stats {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .quota-items {
+      font-size: 10px;
+      color: var(--muted-2);
+      margin-top: 1px;
+    }
+    .diagnostics-info {
+      font-size: 11px;
+      color: var(--text);
+      background: var(--bg);
+      padding: 6px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .advanced-actions {
+      display: flex;
+      gap: 6px;
+    }
+    .adv-btn {
+      flex: 1;
+      padding: 6px 8px;
+      font-size: 11px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      cursor: pointer;
+    }
+    .adv-btn:hover {
+      border-color: var(--accent);
+      background: var(--bg);
+    }
+    .advanced-modal-content {
+      max-width: 320px;
+    }
+
     #device-label { font-size: 10px; color: var(--muted-2); text-align: right; margin-top: 5px; }
     .device-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 5px; }
     .device-row #device-label { margin-top: 0; }
@@ -280,10 +480,18 @@
     .status { margin-top: 8px; font-size: 12px; text-align: center; color: var(--muted); }
 
     .footer {
-      margin-top: 8px;
+      margin-top: 10px;
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 6px;
+    }
+    .footer-links {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 4px;
+      white-space: nowrap;
     }
     .footer .right { font-size: 11px; font-style: italic; color: var(--muted); text-align: right; }
     .meta-divider { opacity: 0.6; }
@@ -433,12 +641,26 @@
     <div class="device-settings">
       <input type="text" id="device-name-input" maxlength="32" placeholder="Set Current Device Name (Optional)">
       <button id="save-device-name">Save</button>
-      <button id="force-sync-btn" title="Force push current tab groups to sync">Force push</button>
+      <button id="force-sync-btn" class="btn-sync" title="Force push current tab groups to sync">
+        <span class="btn-text">Push</span>
+        <span class="btn-progress-bar"></span>
+      </button>
+      <button id="pull-sync-btn" class="btn-sync" title="Pull & refresh snapshots from sync storage">
+        <span class="btn-text">Pull</span>
+        <span class="btn-progress-bar"></span>
+      </button>
     </div>
     <div class="device-row">
       <div id="device-sync-status" class="device-sync-status"></div>
       <div class="device-meta-right">
         <div id="device-label" class="device-id"></div>
+        <span class="meta-divider">•</span>
+        <button id="advanced-sync-btn" class="icon-btn" title="Advanced Sync & Diagnostics" aria-label="Advanced Sync">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
         <span class="meta-divider">•</span>
         <div class="theme-toggle" aria-label="Theme">
           <button class="theme-btn" data-theme="light" title="Light">
@@ -454,6 +676,23 @@
           </button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div id="sync-help-card" class="sync-help-card" style="display: none;">
+    <div class="sync-help-header">
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+      <span>Only seeing this device?</span>
+      <button id="dismiss-sync-help" class="close-help-btn" title="Dismiss">&times;</button>
+    </div>
+    <div class="sync-help-body">
+      <p>1. In Firefox Settings &rarr; <strong>Sync</strong> (<code>about:preferences#sync</code>), verify <strong>"Add-ons"</strong> is checked on <em>both</em> devices.</p>
+      <p>2. In Firefox menu, click your Account &rarr; <strong>"Sync Now"</strong> to transfer data without waiting for the background cycle.</p>
+      <p>3. Click <strong>"Pull"</strong> above or use <strong>Advanced Sync</strong> (gear icon) to export/import instantly.</p>
     </div>
   </div>
 
@@ -484,9 +723,13 @@
     <a id="kofi-link" class="kofi-button" href="https://ko-fi.com/U7U61FUIAB" target="_blank" rel="noopener noreferrer" title="Support me on Ko-fi">
       <img height='36' style='border:0px;height:36px;' src='icons/kofi_beige.png' border='0' alt='Buy Me a Coffee at ko-fi.com' />
     </a>
-    <!-- Source/Report Issue aligned right -->
+    <!-- Rate & Source links aligned right -->
     <div class="right">
-      <a id="source-link" href="https://github.com/sudhir-asuracore/firefox-tab-group-sync" target="_blank" rel="noopener noreferrer">Source/Report Issue</a>
+      <div class="footer-links">
+        <a id="rate-link" href="https://addons.mozilla.org/en-US/firefox/addon/tab-group-syncer/" target="_blank" rel="noopener noreferrer" title="Rate this extension on Firefox Add-ons">★ Rate</a>
+        <span class="meta-divider">•</span>
+        <a id="source-link" href="https://github.com/sudhir-asuracore/firefox-tab-group-sync" target="_blank" rel="noopener noreferrer" title="View source repository or report an issue">Source/Issue</a>
+      </div>
       <div id="version-label"></div>
     </div>
   </div>
@@ -508,6 +751,49 @@
       </div>
     </div>
   </div>
+
+  <div id="advanced-modal" class="modal">
+    <div class="modal-content advanced-modal-content">
+      <div class="modal-header">
+        <svg class="modal-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        <span class="modal-title">Advanced Sync</span>
+      </div>
+      <div class="advanced-section">
+        <label class="section-title">Storage Quota (browser.storage.sync)</label>
+        <div class="quota-meter">
+          <div id="quota-fill" class="quota-fill" style="width: 0%;"></div>
+        </div>
+        <div class="quota-stats">
+          <span id="quota-text">0 KB / 100 KB</span>
+          <span id="quota-percent">0%</span>
+        </div>
+        <div id="quota-items" class="quota-items">0 items in sync storage</div>
+      </div>
+      <div class="advanced-section">
+        <label class="section-title">Sync Health</label>
+        <div class="diagnostics-info">
+          <div><strong>Last Push:</strong> <span id="diag-last-push">Never</span></div>
+          <div><strong>Last Error:</strong> <span id="diag-last-error">None</span></div>
+        </div>
+      </div>
+      <div class="advanced-section">
+        <label class="section-title">Offline Backup & Restore (Direct Transfer)</label>
+        <p class="section-desc">Instantly move tab groups between devices without Firefox Sync latency.</p>
+        <div class="advanced-actions">
+          <button id="export-json-btn" class="adv-btn">Export JSON</button>
+          <button id="import-json-btn" class="adv-btn">Import JSON</button>
+          <input type="file" id="import-file-input" accept=".json" style="display: none;">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="advanced-close-btn" class="modal-btn primary">Close</button>
+      </div>
+    </div>
+  </div>
+
 
   <script src="popup.js" type="module"></script>
 </body>

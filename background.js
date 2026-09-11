@@ -1,5 +1,5 @@
 import { normalizeUrl, VALID_COLORS, MAX_TITLE_LENGTH } from './utils.js';
-import { getDeviceInfo, saveStateToCloud as saveStateLogic, syncGroupsFromRemote } from './background.logic.js';
+import { getDeviceInfo, saveStateToCloud as saveStateLogic, syncGroupsFromRemote, getStorageUsage, exportLocalState, importSnapshotData } from './background.logic.js';
 
 /**
  * Firefox Tab Group Syncer - Background Script
@@ -12,9 +12,6 @@ import { getDeviceInfo, saveStateToCloud as saveStateLogic, syncGroupsFromRemote
 let debounceTimer;
 let lastAutoSave = Promise.resolve();
 let actionStatus = "pending";
-const baseIconBitmaps = new Map();
-
-const ACTION_ICON_SIZES = [16, 32];
 const ACTION_ICON_PATHS = {
   16: "icons/icon-16.png",
   32: "icons/icon-32.png"
@@ -22,58 +19,22 @@ const ACTION_ICON_PATHS = {
 
 const ACTION_STATUS = {
   pending: {
-    bgColor: "#f59e0b",
     title: "Sync pending"
   },
   synced: {
-    bgColor: "#22c55e",
     title: "All groups synced"
   },
   error: {
-    bgColor: "#f59e0b",
     title: "Sync failed"
   }
 };
-
-async function getBaseIconBitmap(size) {
-  if (baseIconBitmaps.has(size)) {
-    return baseIconBitmaps.get(size);
-  }
-  const path = ACTION_ICON_PATHS[size];
-  const response = await fetch(browser.runtime.getURL(path));
-  const blob = await response.blob();
-  const bitmap = await createImageBitmap(blob);
-  baseIconBitmaps.set(size, bitmap);
-  return bitmap;
-}
-
-async function setActionIconStatus(status) {
-  const config = ACTION_STATUS[status] || ACTION_STATUS.pending;
-  const imageDataBySize = {};
-
-  await Promise.all(ACTION_ICON_SIZES.map(async (size) => {
-    const canvas = typeof OffscreenCanvas !== "undefined"
-      ? new OffscreenCanvas(size, size)
-      : Object.assign(document.createElement("canvas"), { width: size, height: size });
-    const ctx = canvas.getContext("2d");
-    const baseBitmap = await getBaseIconBitmap(size);
-    ctx.clearRect(0, 0, size, size);
-    ctx.fillStyle = config.bgColor;
-    ctx.fillRect(0, 0, size, size);
-    ctx.drawImage(baseBitmap, 0, 0, size, size);
-
-    imageDataBySize[size] = ctx.getImageData(0, 0, size, size);
-  }));
-
-  await browser.action.setIcon({ imageData: imageDataBySize });
-}
 
 function setActionStatus(status) {
   actionStatus = status;
   const config = ACTION_STATUS[status] || ACTION_STATUS.pending;
   browser.action.setBadgeText({ text: "" });
   browser.action.setTitle({ title: config.title });
-  setActionIconStatus(status);
+  browser.action.setIcon({ path: ACTION_ICON_PATHS });
 }
 
 // --- CORE LOGIC ---
@@ -163,7 +124,38 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
     return true; // Required for async sendResponse.
   }
+  if (message.type === "getStorageUsage") {
+    getStorageUsage()
+      .then((usage) => sendResponse({ status: "success", usage }))
+      .catch((err) => sendResponse({ status: "error", message: err.toString() }));
+    return true;
+  }
+  if (message.type === "exportLocalState") {
+    exportLocalState()
+      .then((data) => sendResponse({ status: "success", data }))
+      .catch((err) => sendResponse({ status: "error", message: err.toString() }));
+    return true;
+  }
+  if (message.type === "importSnapshot") {
+    importSnapshotData(message.data, message.options || {})
+      .then((result) => sendResponse({ status: "success", result }))
+      .catch((err) => sendResponse({ status: "error", message: err.toString() }));
+    return true;
+  }
 });
+
+// Reactive sync listener: log and track incoming remote sync changes
+if (browser.storage && browser.storage.onChanged) {
+  browser.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === "sync") {
+      const stateKeys = Object.keys(changes).filter(k => k.startsWith("state_"));
+      if (stateKeys.length > 0) {
+        console.log("[Background] Storage sync change detected for keys:", stateKeys);
+      }
+    }
+  });
+}
+
 
 // Initial Save on Startup
 setActionStatus("pending");
