@@ -1,766 +1,93 @@
-import { createGroupCard, normalizeUrl, decompressData } from './utils.js';
-
-document.addEventListener('DOMContentLoaded', () => {
-  const listContainer = document.getElementById('group-list');
-  const syncBtn = document.getElementById('sync-btn');
-  const statusMsg = document.getElementById('status-msg');
-  const deviceLabel = document.getElementById('device-label');
-  const selectorContainer = document.getElementById('selector-container');
-  const deviceNameInput = document.getElementById('device-name-input');
-  const saveDeviceNameBtn = document.getElementById('save-device-name');
-  const forceSyncBtn = document.getElementById('force-sync-btn');
-  const deviceSyncStatus = document.getElementById('device-sync-status');
-  const sourceLink = document.getElementById('source-link');
-  const kofiLink = document.getElementById('kofi-link');
-  const rateLink = document.getElementById('rate-link');
-  const versionLabel = document.getElementById('version-label');
-  const mirrorCheckbox = document.getElementById('mirror-checkbox');
-  const syncRow = document.querySelector('.sync-row');
-  const themeButtons = Array.from(document.querySelectorAll('.theme-btn'));
-  const bulkActions = document.getElementById('bulk-actions');
-  const masterCheckbox = document.getElementById('master-checkbox');
-  const pullSyncBtn = document.getElementById('pull-sync-btn');
-  const syncHelpCard = document.getElementById('sync-help-card');
-  const dismissSyncHelpBtn = document.getElementById('dismiss-sync-help');
-  const advancedSyncBtn = document.getElementById('advanced-sync-btn');
-  const advancedModal = document.getElementById('advanced-modal');
-  const advancedCloseBtn = document.getElementById('advanced-close-btn');
-  const quotaFill = document.getElementById('quota-fill');
-  const quotaText = document.getElementById('quota-text');
-  const quotaPercent = document.getElementById('quota-percent');
-  const quotaItems = document.getElementById('quota-items');
-  const diagLastPush = document.getElementById('diag-last-push');
-  const diagLastError = document.getElementById('diag-last-error');
-  const exportJsonBtn = document.getElementById('export-json-btn');
-  const importJsonBtn = document.getElementById('import-json-btn');
-  const importFileInput = document.getElementById('import-file-input');
-
-  // Open GitHub repo in a new tab when the footer link is clicked
-  if (sourceLink) {
-    sourceLink.addEventListener('click', (e) => {
-      e.preventDefault();
-      const url = sourceLink.getAttribute('href');
-      if (url) {
-        browser.tabs.create({ url });
-      }
-    });
-  }
-
-  // Open Ko-fi link in a new tab when the donate button is clicked
-  if (kofiLink) {
-    kofiLink.addEventListener('click', (e) => {
-      e.preventDefault();
-      const url = kofiLink.getAttribute('href');
-      if (url) {
-        browser.tabs.create({ url });
-      }
-    });
-  }
-
-  // Open Firefox Add-ons store page in a new tab when the rate link is clicked
-  if (rateLink) {
-    rateLink.addEventListener('click', (e) => {
-      e.preventDefault();
-      const url = rateLink.getAttribute('href');
-      if (url) {
-        browser.tabs.create({ url });
-      }
-    });
-  }
-
-  if (versionLabel) {
-    const manifest = browser.runtime.getManifest();
-    versionLabel.textContent = `Version ${manifest.version}`;
-  }
-
-  const applyTheme = (pref) => {
-    if (!document.body) return;
-    document.body.dataset.theme = pref;
-    themeButtons.forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.theme === pref);
-    });
-  };
-
-  const setStatusMsg = (message) => {
-    if (statusMsg) {
-      statusMsg.textContent = message || '';
-    }
-  };
-
-  const showConfirm = (message) => {
-    return new Promise((resolve) => {
-      const modal = document.getElementById('confirm-modal');
-      const msgEl = document.getElementById('confirm-message');
-      const okBtn = document.getElementById('confirm-ok');
-      const cancelBtn = document.getElementById('confirm-cancel');
-
-      if (!modal || !msgEl || !okBtn || !cancelBtn) {
-        resolve(confirm(message));
-        return;
-      }
-
-      msgEl.textContent = message;
-      modal.classList.add('show');
-
-      const cleanup = () => {
-        modal.classList.remove('show');
-        okBtn.onclick = null;
-        cancelBtn.onclick = null;
-        modal.onclick = null;
-      };
-
-      okBtn.onclick = () => {
-        cleanup();
-        resolve(true);
-      };
-
-      cancelBtn.onclick = () => {
-        cleanup();
-        resolve(false);
-      };
-
-      // Also close on background click
-      modal.onclick = (e) => {
-        if (e.target === modal) {
-          cleanup();
-          resolve(false);
-        }
-      };
-    });
-  };
-
-  const updateSyncUIState = () => {
-    if (!listContainer) return;
-    const allTabs = listContainer.querySelectorAll('.tab-checkbox');
-    const selectedTabs = listContainer.querySelectorAll('.tab-checkbox:checked');
-    const hasSelection = selectedTabs.length > 0;
-
-    if (masterCheckbox) {
-      const total = allTabs.length;
-      const selected = selectedTabs.length;
-      masterCheckbox.checked = total > 0 && selected === total;
-      masterCheckbox.indeterminate = selected > 0 && selected < total;
-    }
-
-    if (mirrorCheckbox) {
-      mirrorCheckbox.disabled = !hasSelection;
-      if (!hasSelection) {
-        mirrorCheckbox.checked = false;
-      }
-    }
-
-    if (syncBtn) {
-      syncBtn.disabled = !hasSelection;
-    }
-  };
-
-  if (themeButtons.length > 0) {
-    browser.storage.local.get(['theme_pref']).then((data) => {
-      const pref = data.theme_pref || 'light';
-      applyTheme(pref);
-    });
-
-    themeButtons.forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const pref = btn.dataset.theme;
-        await browser.storage.local.set({ theme_pref: pref });
-        applyTheme(pref);
-      });
-    });
-  }
-
-  if (masterCheckbox) {
-    masterCheckbox.addEventListener('change', () => {
-      const isChecked = masterCheckbox.checked;
-      const groupCheckboxes = listContainer.querySelectorAll('.sync-checkbox');
-      groupCheckboxes.forEach(cb => {
-        if (cb.checked !== isChecked || cb.indeterminate) {
-          cb.checked = isChecked;
-          cb.indeterminate = false;
-          cb.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-      });
-      updateSyncUIState();
-    });
-  }
-
-  saveDeviceNameBtn.addEventListener('click', async () => {
-    // Security enhancement: Truncate device name to 32 chars to prevent storage bloat
-    const newName = deviceNameInput.value.trim().substring(0, 32);
-    if (newName) {
-      await browser.storage.local.set({ device_name: newName });
-      saveDeviceNameBtn.textContent = "Saved!";
-      setTimeout(() => { saveDeviceNameBtn.textContent = "Save"; }, 1500);
-    }
-  });
-
-  if (forceSyncBtn) {
-    forceSyncBtn.disabled = true;
-  }
-
-  const waitForAutoSave = async () => {
-    if (!forceSyncBtn) return;
-    try {
-      const response = await browser.runtime.sendMessage({ type: "waitForAutoSave" });
-      if (response && response.status === "success") {
-        forceSyncBtn.disabled = false;
-      } else {
-        const message = response && response.message ? response.message : "Auto-sync pending.";
-        if (deviceSyncStatus) {
-          deviceSyncStatus.textContent = message;
-        }
-      }
-    } catch (error) {
-    }
-  };
-
-  if (forceSyncBtn) {
-    forceSyncBtn.addEventListener('click', async () => {
-      forceSyncBtn.disabled = true;
-      forceSyncBtn.classList.add('in-progress');
-      setStatusMsg("Pushing current groups to sync...");
-      if (deviceSyncStatus) {
-        deviceSyncStatus.textContent = "Syncing...";
-      }
-
-      try {
-        const response = await browser.runtime.sendMessage({ type: "forceSync" });
-        if (response && response.status === "success") {
-          const countText = typeof response.count === 'number'
-            ? `${response.count} group(s) synced.`
-            : "Groups synced.";
-          setStatusMsg(countText);
-          if (deviceSyncStatus) {
-            deviceSyncStatus.textContent = countText;
-            setTimeout(() => {
-              if (deviceSyncStatus.textContent === countText) {
-                deviceSyncStatus.textContent = "";
-              }
-            }, 4000);
-          }
-          forceSyncBtn.classList.remove('in-progress');
-          forceSyncBtn.classList.add('completed');
-          setTimeout(() => {
-            forceSyncBtn.classList.remove('completed');
-            forceSyncBtn.disabled = false;
-          }, 1200);
-        } else {
-          const message = response && response.message ? response.message : "Sync failed.";
-          setStatusMsg(`Error: ${message}`);
-          if (deviceSyncStatus) {
-            deviceSyncStatus.textContent = "Sync failed.";
-          }
-          forceSyncBtn.classList.remove('in-progress');
-          forceSyncBtn.disabled = false;
-        }
-      } catch (error) {
-        setStatusMsg(`Error: ${error.message}`);
-        if (deviceSyncStatus) {
-          deviceSyncStatus.textContent = "Sync failed.";
-        }
-        forceSyncBtn.classList.remove('in-progress');
-        forceSyncBtn.disabled = false;
-      } finally {
-        setTimeout(() => { setStatusMsg(""); }, 2000);
-      }
-    });
-  }
-
-  if (pullSyncBtn) {
-    pullSyncBtn.addEventListener('click', async () => {
-      pullSyncBtn.disabled = true;
-      pullSyncBtn.classList.add('in-progress');
-      setStatusMsg("Pulling latest sync data...");
-      try {
-        await initializeSyncUI();
-        pullSyncBtn.classList.remove('in-progress');
-        pullSyncBtn.classList.add('completed');
-        setStatusMsg("Refreshed!");
-        setTimeout(() => {
-          pullSyncBtn.classList.remove('completed');
-          pullSyncBtn.disabled = false;
-          setStatusMsg("");
-        }, 1200);
-      } catch (err) {
-        pullSyncBtn.classList.remove('in-progress');
-        pullSyncBtn.disabled = false;
-        setStatusMsg(`Pull failed: ${err.message}`);
-        setTimeout(() => { setStatusMsg(""); }, 2000);
-      }
-    });
-  }
-
-  if (dismissSyncHelpBtn) {
-    dismissSyncHelpBtn.addEventListener('click', async () => {
-      if (syncHelpCard) syncHelpCard.style.display = 'none';
-      await browser.storage.local.set({ dismiss_sync_help: true });
-    });
-  }
-
-  async function initializeSyncUI() {
-    try {
-      // --- API Check ---
-      if (!browser.tabGroups) {
-        throw new Error("The Tab Groups API is not enabled. Please enable 'extensions.tabGroups.enabled' in about:config.");
-      }
-
-      const localData = await browser.storage.local.get(["device_id", "device_name", "last_selected_snapshot_key"]);
-      const currentDeviceId = localData.device_id || "unknown";
-      deviceNameInput.value = localData.device_name || '';
-      deviceLabel.textContent = `ID: ${currentDeviceId}`;
-
-      const allData = await browser.storage.sync.get(null);
-      const allSnapshotKeys = Object.keys(allData).filter(k =>
-        k.startsWith("state_") && !k.includes("_chunk_")
-      );
-      const remoteKeys = allSnapshotKeys.filter(k => k !== `state_${currentDeviceId}`);
-      const localSnapshotKey = `state_${currentDeviceId}`;
-      const hasLocalSnapshot = allData[localSnapshotKey] !== undefined;
-
-      // Reassemble chunked and/or compressed data if necessary
-      for (const key of allSnapshotKeys) {
-        const data = allData[key];
-        if (data && data.chunkCount) {
-          let assembled = "";
-          for (let i = 0; i < data.chunkCount; i++) {
-            assembled += (allData[`${key}_chunk_${i}`] || "");
-          }
-          try {
-            if (data.isCompressed) {
-              allData[key] = await decompressData(assembled);
-            } else {
-              allData[key] = JSON.parse(assembled);
-            }
-          } catch (e) {
-            console.error("Failed to reassemble/decompress chunks for", key, e);
-          }
-        } else if (data && data.isCompressed) {
-          try {
-            allData[key] = await decompressData(data.data);
-          } catch (e) {
-            console.error("Failed to decompress snapshot for", key, e);
-          }
-        }
-      }
-
-      const localSettings = await browser.storage.local.get(["dismiss_sync_help", "last_sync_error"]);
-      if (syncHelpCard) {
-        if (remoteKeys.length === 0 && !localSettings.dismiss_sync_help) {
-          syncHelpCard.style.display = 'block';
-        } else {
-          syncHelpCard.style.display = 'none';
-        }
-      }
-      if (localSettings.last_sync_error && deviceSyncStatus && !deviceSyncStatus.textContent) {
-        deviceSyncStatus.textContent = "Sync error (see Advanced)";
-        deviceSyncStatus.title = localSettings.last_sync_error;
-      }
-
-      listContainer.textContent = '';
-      selectorContainer.innerHTML = ''; // Clear previous selector to prevent duplicates
-
-      if (allSnapshotKeys.length === 0) {
-        const p = document.createElement('p');
-        p.textContent = "No snapshots found.";
-        p.style.color = '#666';
-        listContainer.appendChild(p);
-        if (syncRow) syncRow.style.display = 'flex';
-        if (bulkActions) bulkActions.style.display = 'none';
-        syncBtn.disabled = true;
-        syncBtn.textContent = "Nothing to Sync";
-        syncBtn.title = "There are no snapshots to sync from.";
-        updateSyncUIState();
-        return;
-      }
-
-      const localGroupsList = await browser.tabGroups.query({});
-      const localGroups = new Map(localGroupsList.map(g => [g.title, g]));
-      const localTabs = await browser.tabs.query({});
-
-      let currentSnapshotKey = localData.last_selected_snapshot_key && allSnapshotKeys.includes(localData.last_selected_snapshot_key)
-        ? localData.last_selected_snapshot_key
-        : allSnapshotKeys.sort((a, b) => (allData[b].timestamp || 0) - (allData[a].timestamp || 0))[0];
-
-      const customSelect = document.createElement('div');
-      customSelect.className = 'custom-select';
-
-      const trigger = document.createElement('div');
-      trigger.className = 'select-trigger';
-      customSelect.appendChild(trigger);
-
-      const optionsContainer = document.createElement('div');
-      optionsContainer.className = 'select-options';
-      customSelect.appendChild(optionsContainer);
-
-      const createOption = (key) => {
-        const option = document.createElement('div');
-        option.className = 'select-option';
-        if (key === currentSnapshotKey) option.classList.add('selected');
-
-        const text = document.createElement('span');
-        const snapshot = allData[key];
-        const date = new Date(snapshot.timestamp);
-        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        const isLocal = key === localSnapshotKey;
-        const displayName = (snapshot.deviceName || key.replace('state_', '')) + (isLocal ? ' (This Device)' : '');
-        text.textContent = `${displayName} - ${dateStr}`;
-        option.appendChild(text);
-
-        const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'delete-btn';
-        deleteBtn.innerHTML = '&times;';
-        deleteBtn.title = 'Delete this snapshot';
-        deleteBtn.onclick = async (e) => {
-          e.stopPropagation();
-          if (await showConfirm(`Are you sure you want to delete the snapshot from "${displayName}"?`)) {
-            const mainData = await browser.storage.sync.get(null);
-            const keysToRemove = [key];
-            Object.keys(mainData).forEach(k => {
-              if (k.startsWith(`${key}_chunk_`)) {
-                keysToRemove.push(k);
-              }
-            });
-            await browser.storage.sync.remove(keysToRemove);
-            initializeSyncUI();
-          }
-        };
-        option.appendChild(deleteBtn);
-
-        option.onclick = async () => {
-          currentSnapshotKey = key;
-          await browser.storage.local.set({ last_selected_snapshot_key: key });
-          updateTriggerTextOnKey(key);
-          Array.from(optionsContainer.children).forEach(child => child.classList.remove('selected'));
-          option.classList.add('selected');
-          customSelect.classList.remove('open');
-          renderGroups(key);
-        };
-
-        return option;
-      };
-
-      remoteKeys.sort((a, b) => (allData[b].timestamp || 0) - (allData[a].timestamp || 0)).forEach(key => {
-        optionsContainer.appendChild(createOption(key));
-      });
-
-      if (hasLocalSnapshot) {
-        if (remoteKeys.length > 0) {
-          const separator = document.createElement('div');
-          separator.className = 'select-separator';
-          optionsContainer.appendChild(separator);
-        }
-        optionsContainer.appendChild(createOption(localSnapshotKey));
-      }
-
-      const updateTriggerTextOnKey = (key) => {
-        const snapshot = allData[key];
-        const date = new Date(snapshot.timestamp);
-        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        const isLocal = key === localSnapshotKey;
-        const displayName = (snapshot.deviceName || key.replace('state_', '')) + (isLocal ? ' (This Device)' : '');
-        trigger.textContent = `${displayName} - ${dateStr}`;
-      };
-
-      updateTriggerTextOnKey(currentSnapshotKey);
-
-      trigger.onclick = (e) => {
-        e.stopPropagation();
-        customSelect.classList.toggle('open');
-      };
-
-      selectorContainer.appendChild(customSelect);
-
-      const renderGroups = async (snapshotKey) => {
-        listContainer.textContent = '';
-        setStatusMsg(''); // Clear status message
-        const snapshot = allData[snapshotKey];
-
-        if (!snapshot || !snapshot.groups) {
-          listContainer.textContent = 'No groups found in this snapshot.';
-          if (syncRow) syncRow.style.display = 'none';
-          if (bulkActions) bulkActions.style.display = 'none';
-          return;
-        }
-
-        let anyUnsynced = false;
-
-        const isGroupSynced = (remoteGroup) => {
-          const localGroup = localGroups.get(remoteGroup.title);
-          if (!localGroup) return false;
-          const localGroupTabs = localTabs.filter(t => t.groupId === localGroup.id);
-          const localUrls = new Set(localGroupTabs.map(t => normalizeUrl(t.url)).filter(u => u !== null));
-          const remoteUrls = new Set(
-            (remoteGroup.tabs || [])
-              .map(t => normalizeUrl(typeof t === 'string' ? t : t.url))
-              .filter(u => u !== null)
-          );
-          return remoteUrls.size > 0 && [...remoteUrls].every(url => localUrls.has(url));
-        };
-
-        const sortedGroups = snapshot.groups
-          .map(group => ({ group, synced: isGroupSynced(group) }))
-          .sort((a, b) => {
-            if (a.synced !== b.synced) return a.synced ? -1 : 1;
-            return a.group.title.localeCompare(b.group.title);
-          });
-
-        sortedGroups.forEach(({ group, synced }) => {
-          const card = createGroupCard(group, localGroups, localTabs);
-          listContainer.appendChild(card);
-          if (!synced) {
-            anyUnsynced = true;
-          }
-        });
-
-        if (snapshot.groups.length > 0) {
-          if (syncRow) syncRow.style.display = 'flex';
-          if (bulkActions) bulkActions.style.display = 'flex';
-          syncBtn.textContent = "Sync Selected Tabs";
-          if (!anyUnsynced) {
-            setStatusMsg('Already in sync');
-          }
-        } else {
-          if (bulkActions) bulkActions.style.display = 'none';
-        }
-
-        updateSyncUIState();
-      };
-
-      await renderGroups(currentSnapshotKey);
-      listContainer.onchange = updateSyncUIState;
-
-      // Use onclick to avoid duplicate listeners when initializeSyncUI is called again
-      syncBtn.onclick = async () => {
-        const selectedTabCheckboxes = Array.from(listContainer.querySelectorAll('.tab-checkbox:checked'));
-        const selectedTabsByGroup = new Map();
-        const mirrorEnabled = mirrorCheckbox && mirrorCheckbox.checked;
-
-        selectedTabCheckboxes.forEach((cb) => {
-          const groupTitle = cb.dataset.groupTitle;
-          const tabUrl = cb.dataset.tabUrl;
-          if (!selectedTabsByGroup.has(groupTitle)) {
-            selectedTabsByGroup.set(groupTitle, new Set());
-          }
-          selectedTabsByGroup.get(groupTitle).add(tabUrl);
-        });
-
-        if (selectedTabsByGroup.size === 0) {
-          setStatusMsg("No tabs selected.");
-          return;
-        }
-
-        syncBtn.disabled = true;
-        syncBtn.textContent = "Syncing...";
-        setStatusMsg(`Syncing ${selectedTabsByGroup.size} group(s)...`);
-
-        try {
-          const snapshotKey = currentSnapshotKey;
-          const remoteSnapshot = allData[snapshotKey];
-          const groupsToSync = remoteSnapshot.groups
-            .filter(g => selectedTabsByGroup.has(g.title))
-            .map(g => ({
-              title: g.title,
-              color: g.color,
-              tabs: mirrorEnabled ? g.tabs : Array.from(selectedTabsByGroup.get(g.title))
-            }));
-
-          await browser.runtime.sendMessage({
-            type: "syncGroups",
-            groups: groupsToSync,
-            mirror: mirrorEnabled
-          });
-
-          setStatusMsg("Sync successful!");
-          setTimeout(() => {
-            setStatusMsg("");
-            initializeSyncUI(); // Re-initialize to update synced status
-          }, 2000);
-
-        } catch (error) {
-          console.error("Sync failed:", error);
-          setStatusMsg(`Error: ${error.message}`);
-          syncBtn.disabled = false;
-          syncBtn.textContent = "Sync Selected Tabs";
-        }
-      };
-
-    } catch (error) {
-      console.error("Initialization failed:", error);
-      listContainer.textContent = '';
-      const errorP = document.createElement('p');
-      errorP.textContent = `Error: ${error.message}`;
-      errorP.style.color = 'red';
-      errorP.style.fontWeight = 'bold';
-      listContainer.appendChild(errorP);
-      if (syncRow) syncRow.style.display = 'flex';
-      syncBtn.disabled = true;
-      syncBtn.textContent = "Error";
-    }
-  }
-
-  const updateAdvancedDiagnostics = async () => {
-    try {
-      const localData = await browser.storage.local.get([
-        "last_sync_success_time",
-        "last_sync_error",
-        "last_sync_error_time"
-      ]);
-      if (diagLastPush) {
-        diagLastPush.textContent = localData.last_sync_success_time
-          ? new Date(localData.last_sync_success_time).toLocaleTimeString()
-          : "Never";
-      }
-      if (diagLastError) {
-        diagLastError.textContent = localData.last_sync_error
-          ? `${localData.last_sync_error} (${new Date(localData.last_sync_error_time).toLocaleTimeString()})`
-          : "None";
-        diagLastError.style.color = localData.last_sync_error ? "#ef4444" : "inherit";
-      }
-
-      // Quota usage
-      const allSync = await browser.storage.sync.get(null);
-      let totalBytes = 0;
-      let itemCount = 0;
-      for (const [k, v] of Object.entries(allSync)) {
-        const str = JSON.stringify({ [k]: v });
-        totalBytes += (new TextEncoder().encode(str)).length;
-        itemCount++;
-      }
-      const quotaBytes = (browser.storage.sync && browser.storage.sync.QUOTA_BYTES) || 102400;
-      const pct = Math.min(100, Math.round((totalBytes / quotaBytes) * 100));
-
-      if (quotaFill) {
-        quotaFill.style.width = `${pct}%`;
-        quotaFill.classList.toggle('warning', pct >= 75 && pct < 90);
-        quotaFill.classList.toggle('danger', pct >= 90);
-      }
-      if (quotaText) {
-        quotaText.textContent = `${(totalBytes / 1024).toFixed(1)} KB / ${(quotaBytes / 1024).toFixed(0)} KB`;
-      }
-      if (quotaPercent) {
-        quotaPercent.textContent = `${pct}% used`;
-      }
-      if (quotaItems) {
-        quotaItems.textContent = `${itemCount} item(s) in sync storage`;
-      }
-    } catch (e) {
-      console.error("Error loading diagnostics:", e);
-    }
-  };
-
-  if (advancedSyncBtn && advancedModal) {
-    advancedSyncBtn.addEventListener('click', () => {
-      updateAdvancedDiagnostics();
-      advancedModal.classList.add('show');
-    });
-  }
-
-  if (advancedCloseBtn && advancedModal) {
-    advancedCloseBtn.addEventListener('click', () => {
-      advancedModal.classList.remove('show');
-    });
-  }
-
-  if (advancedModal) {
-    advancedModal.addEventListener('click', (e) => {
-      if (e.target === advancedModal) {
-        advancedModal.classList.remove('show');
-      }
-    });
-  }
-
-  if (exportJsonBtn) {
-    exportJsonBtn.addEventListener('click', async () => {
-      try {
-        exportJsonBtn.disabled = true;
-        exportJsonBtn.textContent = "Exporting...";
-        const response = await browser.runtime.sendMessage({ type: "exportLocalState" });
-        if (response && response.status === "success" && response.data) {
-          const blob = new Blob([JSON.stringify(response.data, null, 2)], { type: "application/json" });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          const dateStr = new Date().toISOString().slice(0, 10);
-          a.download = `firefox-tab-groups-${dateStr}.json`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-          exportJsonBtn.textContent = "Exported!";
-        } else {
-          throw new Error(response && response.message ? response.message : "Export failed");
-        }
-      } catch (err) {
-        console.error("Export error:", err);
-        alert(`Export failed: ${err.message}`);
-        exportJsonBtn.textContent = "Export Failed";
-      } finally {
-        setTimeout(() => {
-          exportJsonBtn.textContent = "Export JSON";
-          exportJsonBtn.disabled = false;
-        }, 1500);
-      }
-    });
-  }
-
-  if (importJsonBtn && importFileInput) {
-    importJsonBtn.addEventListener('click', () => {
-      importFileInput.click();
-    });
-
-    importFileInput.addEventListener('change', async (e) => {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        try {
-          const raw = JSON.parse(event.target.result);
-          const response = await browser.runtime.sendMessage({
-            type: "importSnapshot",
-            data: raw,
-            options: { saveToSync: true }
-          });
-          if (response && response.status === "success") {
-            const count = response.result ? response.result.groupCount : 0;
-            alert(`Successfully imported and synced ${count} tab group(s)!`);
-            if (advancedModal) advancedModal.classList.remove('show');
-            initializeSyncUI();
-          } else {
-            throw new Error(response && response.message ? response.message : "Import failed");
-          }
-        } catch (err) {
-          console.error("Import error:", err);
-          alert(`Import failed: ${err.message}`);
-        } finally {
-          importFileInput.value = '';
-        }
-      };
-      reader.readAsText(file);
-    });
-  }
-
-  // Reactive listener: automatically re-render when remote devices sync via Firefox Sync
-  if (browser.storage && browser.storage.onChanged) {
-    browser.storage.onChanged.addListener((changes, areaName) => {
-      if (areaName === "sync") {
-        console.log("[Popup] Detected sync storage changes, refreshing UI...");
-        initializeSyncUI();
-        if (advancedModal && advancedModal.classList.contains('show')) {
-          updateAdvancedDiagnostics();
-        }
-      }
-    });
-  }
-
-  initializeSyncUI();
-  waitForAutoSave();
-
-  // Close custom dropdown when clicking outside
-  document.addEventListener('click', (e) => {
-    const customSelect = document.querySelector('.custom-select');
-    if (customSelect && !customSelect.contains(e.target)) {
-      customSelect.classList.remove('open');
-    }
-  });
+import { LOCAL_KEY, PREFIX } from './profile-storage.js';
+
+const $ = id => document.getElementById(id);
+let state;
+let busy = false;
+let choosing = false;
+async function request(type, extra = {}) {
+  const response = await browser.runtime.sendMessage({ type, ...extra });
+  if (!response?.ok) throw new Error(response?.error || 'Could not reach the background script. Reload the extension and try again.');
+  return response.data;
+}
+const time = timestamp => timestamp ? new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+function render() {
+  if (!state) return;
+  $('enabled').checked = state.enabled || choosing;
+  $('enabled').disabled = busy || !state.supported;
+  $('setup').hidden = !choosing;
+  $('refresh').disabled = busy || !state.supported;
+  const mode = document.querySelector('input[name=start]:checked')?.value;
+  $('confirm').disabled = busy || !mode || (mode === 'pull' && (!state.cloud || state.cloudError));
+  $('cancel').disabled = busy;
+  for (const input of document.querySelectorAll('input[name=start]')) input.disabled = busy || (input.value === 'pull' && (!state.cloud || state.cloudError));
+  $('status').textContent = !state.supported ? 'Desktop Firefox 139 or newer is required.' : choosing ? 'Select a starting state to enable sync.' : state.enabled ? state.pending ? 'Changes saved locally; waiting to prepare sync.' : 'Sync enabled · cloud transfer handled by Firefox' : state.initialized ? 'Sync paused · local tabs are kept' : 'Sync is off for this profile';
+  const error = state.error || state.cloudError;
+  $('error').textContent = error || '';
+  $('error').hidden = !error;
+  $('cloud-summary').textContent = state.cloud ? `${state.cloud.tabs} web tabs in ${state.cloud.groups} groups are available from sync storage on this device.` : 'No cloud session is available on this device yet.';
+  $('prepared').textContent = time(state.lastPrepared);
+  $('received').textContent = time(state.lastReceived);
+  $('usage').textContent = state.usage ? `${(state.usage.bytes / 1024).toFixed(1)} / 100 KB` : 'Unavailable';
+  $('backup-summary').textContent = state.backup ? `${state.backup.reason}. Saved ${new Date(state.backup.createdAt).toLocaleString()}.` : 'No replacement backup yet.';
+  $('download').disabled = busy || !state.backup;
+  $('restore').disabled = busy || !state.backup || !state.supported;
+  $('restore-yes').disabled = busy;
+  $('restore-cancel').disabled = busy;
+  $('choose-again').disabled = busy || !state.supported;
+}
+async function load() { state = await request('profileStatus'); render(); }
+async function act(operation) {
+  if (busy) return;
+  busy = true;
+  render();
+  let failure;
+  try { await operation(); } catch (error) { failure = error.message; }
+  try { await load(); } catch (error) { failure ||= error.message; }
+  busy = false;
+  render();
+  if (failure) { $('error').textContent = failure; $('error').hidden = false; }
+}
+$('enabled').addEventListener('change', () => {
+  if (!$('enabled').checked) {
+    choosing = false;
+    act(() => request('profileDisable'));
+  } else if (!state.initialized) {
+    choosing = true;
+    document.querySelectorAll('input[name=start]').forEach(input => { input.checked = false; });
+    render();
+  } else act(() => request('profileEnable'));
 });
+$('cancel').addEventListener('click', () => { choosing = false; render(); });
+document.querySelectorAll('input[name=start]').forEach(input => input.addEventListener('change', render));
+$('confirm').addEventListener('click', () => act(async () => {
+  const mode = document.querySelector('input[name=start]:checked')?.value;
+  await request('profileEnable', { mode });
+  choosing = false;
+}));
+$('refresh').addEventListener('click', () => act(() => request('profileRefresh')));
+$('download').addEventListener('click', () => act(async () => {
+  const backup = await request('profileBackup');
+  const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `profile-tabs-backup-${new Date(backup.createdAt).toISOString().replace(/[:.]/g, '-')}.json`;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}));
+$('restore').addEventListener('click', () => { $('restore-confirm').hidden = false; });
+$('choose-again').addEventListener('click', () => act(async () => {
+  await request('profileChooseAgain');
+  choosing = true;
+  document.querySelectorAll('input[name=start]').forEach(input => { input.checked = false; });
+}));
+$('restore-cancel').addEventListener('click', () => { $('restore-confirm').hidden = true; });
+$('restore-yes').addEventListener('click', () => act(async () => {
+  await request('profileRestoreBackup');
+  choosing = false;
+  $('restore-confirm').hidden = true;
+}));
+browser.storage.onChanged.addListener((changes, area) => {
+  if (busy) return;
+  if ((area === 'local' && changes[LOCAL_KEY]) || (area === 'sync' && Object.keys(changes).some(k => k.startsWith(PREFIX)))) load().catch(() => {});
+});
+load().catch(error => { $('status').textContent = 'Could not load sync settings.'; $('error').textContent = error.message; $('error').hidden = false; });

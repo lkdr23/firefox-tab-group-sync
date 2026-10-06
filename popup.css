@@ -1,0 +1,40 @@
+:root { color-scheme: light dark; font: 13px/1.5 system-ui, sans-serif; color: #18253a; background: #f5f7fb; }
+* { box-sizing: border-box; }
+body { width: 370px; margin: 0; }
+main { padding: 22px; }
+header { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+h1 { font-size: 18px; letter-spacing: -.4px; margin: 0; }
+header p { margin: 2px 0 0; color: #667085; }
+h2 { font-size: 15px; margin: 0 0 8px; }
+p { margin: 10px 0; }
+.toggle { background: #fff; border: 1px solid #dbe2ee; border-radius: 12px; display: flex; align-items: center; justify-content: space-between; padding: 16px; font-weight: 650; }
+small { display: block; font-weight: 400; font-size: 12px; color: #667085; }
+input { accent-color: #5144d8; }
+#enabled { width: 22px; height: 22px; cursor: pointer; }
+#status { font-weight: 600; margin-top: 16px; }
+#error { color: #a12218; background: #fff0ec; border-radius: 8px; padding: 10px; overflow-wrap: anywhere; }
+#setup, #restore-confirm { background: #fff; border: 1px solid #dbe2ee; border-radius: 10px; padding: 14px; margin: 14px 0; }
+#setup > p, .hint, details p { font-size: 12px; color: #667085; }
+.choice { display: flex; align-items: flex-start; gap: 8px; margin: 14px 0; cursor: pointer; }
+.choice input { margin-top: 4px; }
+button { font: inherit; font-weight: 600; padding: 10px 14px; background: #5144d8; color: #fff; border: 1px solid transparent; border-radius: 8px; cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+button:hover:enabled { filter: brightness(.93); }
+.secondary { background: #fff; border-color: #dbe2ee; color: #344054; }
+.full { width: 100%; margin-top: 8px; }
+.actions { display: flex; justify-content: flex-end; gap: 8px; }
+dl { padding: 12px 0; margin: 12px 0; border-top: 1px solid #dbe2ee; border-bottom: 1px solid #dbe2ee; font-size: 12px; }
+dl > div { display: flex; justify-content: space-between; gap: 12px; margin: 6px 0; }
+dt { color: #667085; }
+dd { margin: 0; text-align: right; }
+summary { cursor: pointer; font-weight: 600; }
+:focus-visible { outline: 3px solid #9e95ff; outline-offset: 3px; }
+[hidden] { display: none !important; }
+@media (prefers-color-scheme: dark) {
+  :root { color: #e6e9f2; background: #171b25; }
+  .toggle, #setup, #restore-confirm, .secondary { background: #222837; border-color: #3d4659; }
+  header p, small, #setup > p, .hint, details p, dt { color: #a8b1c3; }
+  .secondary { color: #e6e9f2; }
+  dl { border-color: #3d4659; }
+  #error { background: #462725; color: #ffc9bc; }
+}

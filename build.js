@@ -38,8 +38,13 @@ const filesToInclude = [
   'manifest.json',
   'background.js',
   'background.logic.js',
+  'profile-model.js',
+  'profile-browser.js',
+  'profile-storage.js',
+  'profile-sync.js',
   'utils.js',
   'popup.html',
+  'popup.css',
   'popup.js',
   'README.md',
   'PRIVACY.md'

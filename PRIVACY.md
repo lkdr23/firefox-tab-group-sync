@@ -1,17 +1,24 @@
-# Privacy Policy for Firefox Group Syncer
+# Privacy Policy for Profile Tab Sync
 
-This extension is designed with your privacy in mind.
+## Data
 
-## Data Storage
+When you enable **Sync this profile**, the extension stores HTTP/HTTPS tab URLs, tab/window/group identities, ordering, pinned state, and group names, colours, and collapsed state in Firefox extension sync storage. Firefox transfers that data through the Mozilla account configured in the current profile. Distinct Mozilla accounts have distinct sync data.
 
-- **What is stored**: This extension saves your tab groups (including tab URLs and group titles/colors) to your browser's own sync storage, which is managed by Mozilla.
-- **Where it is stored**: Data is stored locally on your machine and synced across your devices using your Firefox Account's cloud storage.
-- **Third-Parties**: No data is ever sent to any third-party servers or developers. All your information remains within your personal Mozilla-managed cloud environment.
+Each installation has a random local device identifier used to keep concurrent changes separate. Logical revisions and deletion records support merging and prevent stale devices from reopening closed tabs.
+
+Private browsing windows, popup windows, local files, internal Firefox pages, and extension pages are excluded. The extension does not collect cookies, passwords, page contents, form input, or analytics. Container identities and browsing history are not synchronized. No data is sent to the developer or a third-party server by the extension.
+
+Sync is disabled initially. The checkbox and first-time starting-state choice are kept locally. Unticking pauses further preparation/application of changes; data previously placed in Firefox's sync storage remains available to other participating devices and may still be transferred by Firefox. Firefox, rather than the extension, controls account authentication and cloud-transfer timing.
+
+## Local recovery
+
+Pending edits, persistent session tags, sync bookkeeping, and the last three replacement backups are saved locally. Downloaded backup JSON contains URLs and group names. Local backups are not uploaded. Restoring a backup pauses sync until you explicitly choose a starting state again.
 
 ## Permissions
 
-The extension requires the following permissions to function:
-- `tabs` and `tabGroups`: To read your open tabs and groups to create a snapshot for syncing.
-- `storage` and `unlimitedStorage`: To save and retrieve these snapshots from your browser's sync storage.
+- `tabs`: Read web tab URLs and maintain the shared tab arrangement.
+- `tabGroups`: Read and update native group metadata.
+- `storage`: Save local state, backups, and account sync documents.
+- `sessions`: Attach stable identities to tabs/windows so session restore can retain their identity despite changing native IDs.
 
-By using this extension, you agree to the storage of your tab and group data within your own Firefox Sync storage.
+The manifest declares `browsingActivity` for Firefox's data-transmission consent because URLs are transferred through Mozilla's sync service. There is no custom login, custom backend, telemetry, or host permission.
